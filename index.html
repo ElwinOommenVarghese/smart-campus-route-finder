@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Campus Route Finder</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:#eef2f7;color:#172033}
+.app{min-height:100vh;display:grid;grid-template-columns:330px 1fr;gap:16px;padding:16px}
+.sidebar,.card{background:#fff;border:1px solid #dbe3ed;border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.06)}
+.sidebar{padding:22px;display:flex;flex-direction:column;gap:14px}
+h1{font-size:25px;line-height:1.08;margin:0}
+.subtitle{color:#64748b;margin-top:-8px}
+.group{border:1px solid #dbe3ed;border-radius:12px;padding:14px}
+.group h3{font-size:13px;margin:0 0 12px;color:#334155}
+label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 5px}
+select,button{width:100%;padding:11px;border-radius:8px;font-size:14px}
+select{border:1px solid #94a3b8;background:#fff;color:#172033}
+button{border:1px solid #94a3b8;background:#f8fafc;color:#172033;font-weight:800;cursor:pointer}
+button.primary{background:#1565c0;color:#fff;border-color:#1565c0}
+button:hover{filter:brightness(.97)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.result{color:#1565c0;font-weight:800;line-height:1.45}
+.stat{margin:7px 0;color:#334155;font-size:13px}
+.progress{height:12px;border-radius:8px;background:#e2e8f0;overflow:hidden}
+.progress>div{height:100%;width:0;background:#1565c0;transition:.2s}
+.main{display:grid;grid-template-rows:minmax(500px,1fr) 210px;gap:16px}
+.map-card{position:relative;overflow:hidden;padding:16px}
+.map-title{font-size:20px;font-weight:800;margin-bottom:4px}
+.map-subtitle{color:#64748b;font-size:12px;margin-bottom:5px}
+svg{width:100%;height:calc(100% - 35px);min-height:440px;background:#f8fafc;border-radius:12px}
+.road{stroke:#b8c2d1;stroke-width:4;fill:none}
+.road.active{stroke:#1565c0;stroke-width:8}
+.road.check{stroke:#f59e0b;stroke-width:7;stroke-dasharray:10 8}
+.distance{font-size:11px;fill:#64748b}
+.node circle{fill:#fff;stroke:#718096;stroke-width:3}
+.node text{font-size:12px;font-weight:700;fill:#172033;text-anchor:middle}
+.node.start circle{fill:#dcfce7;stroke:#16a34a}
+.node.target circle{fill:#fce7f3;stroke:#db2777}
+.node.visited circle{fill:#dbeafe;stroke:#2563eb}
+.node.current circle{fill:#fef3c7;stroke:#f59e0b}
+.trace{padding:14px}
+.trace h3{margin:0 0 8px;font-size:13px;color:#334155}
+.log{height:145px;background:#0f172a;color:#dbeafe;border-radius:10px;padding:10px;overflow:auto;font:12px/1.5 Consolas,monospace}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#e8eef7;color:#334155;font-size:11px;font-weight:800;margin-right:5px}
+@media(max-width:900px){.app{grid-template-columns:1fr}.main{grid-template-rows:600px 210px}.sidebar{order:1}.main{order:2}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div>
+    <h1>SMART CAMPUS<br>ROUTE FINDER</h1>
+    <div class="subtitle">Dijkstra's Algorithm Visualizer</div>
+  </div>
+
+  <div class="group">
+    <h3>Route Selection</h3>
+    <label for="from">From</label>
+    <select id="from"></select>
+    <label for="to">To</label>
+    <select id="to"></select>
+    <div style="height:10px"></div>
+    <button class="primary" id="find">FIND SHORTEST ROUTE</button>
+    <div style="height:8px"></div>
+    <button id="reset">RESET</button>
+  </div>
+
+  <div class="group">
+    <h3>Route Result</h3>
+    <div class="result" id="route">No route calculated yet.</div>
+    <div class="stat" id="distance">Distance: --</div>
+    <div class="stat" id="time">Estimated walking time: --</div>
+  </div>
+
+  <div class="group">
+    <h3>Algorithm Status</h3>
+    <div class="stat" id="status">Ready</div>
+    <div class="progress"><div id="bar"></div></div>
+    <div class="stat" id="current">Current node: --</div>
+    <div class="stat" id="visited">Visited nodes: 0</div>
+    <div class="stat" id="edges">Edges checked: 0</div>
+  </div>
+
+  <div class="group">
+    <h3>DAA Analysis</h3>
+    <div class="stat"><b>Algorithm:</b> Dijkstra</div>
+    <div class="stat"><b>Data Structure:</b> Min-Heap</div>
+    <div class="stat"><b>Time:</b> O((V + E) log V)</div>
+    <div class="stat"><b>Space:</b> O(V + E)</div>
+  </div>
+</aside>
+
+<main class="main">
+<section class="card map-card">
+  <div class="map-title">Central Campus - Route Network</div>
+  <div class="map-subtitle">Interactive shortest-path demonstration</div>
+  <svg id="map" viewBox="0 0 900 520"></svg>
+</section>
+<section class="card trace">
+  <h3>Live Algorithm Trace</h3>
+  <div class="log" id="log">▶ Ready. Select a source and destination, then click FIND SHORTEST ROUTE.</div>
+</section>
+</main>
+</div>
+
+<script>
+const nodes={
+"Main Gate":[70,300],"Block A":[230,180],"Library":[420,90],"Cafeteria":[420,300],
+"Block B":[610,205],"Auditorium":[800,115],"Sports Complex":[800,325],"Admin Block":[230,405]
+};
+const roads=[
+["Main Gate","Block A",180],["Main Gate","Cafeteria",340],["Main Gate","Admin Block",210],
+["Block A","Library",160],["Block A","Cafeteria",190],["Block A","Admin Block",230],
+["Library","Cafeteria",230],["Library","Block B",180],["Cafeteria","Block B",170],
+["Cafeteria","Sports Complex",310],["Block B","Auditorium",190],["Block B","Sports Complex",220],
+["Auditorium","Sports Complex",230],["Admin Block","Cafeteria",260]
+];
+const graph={}; Object.keys(nodes).forEach(n=>graph[n]=[]);
+roads.forEach(([a,b,w])=>{graph[a].push([b,w]);graph[b].push([a,w])});
+
+const from=document.getElementById("from"), to=document.getElementById("to");
+Object.keys(nodes).forEach(n=>{from.add(new Option(n,n));to.add(new Option(n,n))});
+to.value="Auditorium";
+
+function key(a,b){return [a,b].sort().join("|")}
+const svg=document.getElementById("map");
+function draw(state={}){
+  const path=new Set((state.path||[]).slice(1).map((n,i)=>key((state.path||[])[i],n)));
+  const checked=state.checked?key(...state.checked):"";
+  let out="";
+  roads.forEach(([a,b,w])=>{
+    const cls=path.has(key(a,b))?"road active":checked===key(a,b)?"road check":"road";
+    const [x1,y1]=nodes[a],[x2,y2]=nodes[b];
+    out+=`<line class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    out+=`<text class="distance" x="${(x1+x2)/2+5}" y="${(y1+y2)/2-5}">${w}m</text>`;
+  });
+  Object.entries(nodes).forEach(([n,[x,y]])=>{
+    let cls="node";
+    if(n===state.start)cls+=" start";
+    if(n===state.target)cls+=" target";
+    if((state.visited||new Set()).has(n))cls+=" visited";
+    if(n===state.current)cls+=" current";
+    out+=`<g class="${cls}"><circle cx="${x}" cy="${y}" r="19"/><text x="${x}" y="${y+42}">${n}</text></g>`;
+  });
+  svg.innerHTML=out;
+}
+draw();
+
+function dijkstra(start,target){
+  const d={},p={},visited=new Set(),pq=[[0,start]],steps=[];
+  Object.keys(graph).forEach(n=>d[n]=Infinity); d[start]=0;
+  while(pq.length){
+    pq.sort((a,b)=>a[0]-b[0]);
+    const [cd,u]=pq.shift();
+    if(visited.has(u))continue;
+    visited.add(u); steps.push({type:"visit",node:u,distance:cd,visited:new Set(visited)});
+    if(u===target)break;
+    for(const [v,w] of graph[u]){
+      if(visited.has(v))continue;
+      const nd=cd+w;
+      steps.push({type:"check",a:u,b:v,nd,w});
+      if(nd<d[v]){d[v]=nd;p[v]=u;pq.push([nd,v]);steps.push({type:"update",node:v,distance:nd,prev:u})}
+    }
+  }
+  const path=[]; let c=target;
+  while(c!==undefined){path.push(c);if(c===start)break;c=p[c]}
+  path.reverse();
+  return {d,p,path,steps};
+}
+let timer=null;
+function log(s){const l=document.getElementById("log");l.innerHTML+=`<div>${s}</div>`;l.scrollTop=l.scrollHeight}
+function reset(){
+  clearInterval(timer); timer=null; draw();
+  document.getElementById("route").textContent="No route calculated yet.";
+  document.getElementById("distance").textContent="Distance: --";
+  document.getElementById("time").textContent="Estimated walking time: --";
+  document.getElementById("status").textContent="Ready";
+  document.getElementById("current").textContent="Current node: --";
+  document.getElementById("visited").textContent="Visited nodes: 0";
+  document.getElementById("edges").textContent="Edges checked: 0";
+  document.getElementById("bar").style.width="0%";
+  document.getElementById("log").innerHTML="▶ Ready. Select a source and destination, then click FIND SHORTEST ROUTE.";
+  document.getElementById("find").disabled=false;
+}
+function run(){
+  clearInterval(timer);
+  const s=from.value,t=to.value;
+  if(s===t){alert("Please choose different locations.");return}
+  const r=dijkstra(s,t); let i=0,edgeCount=0;
+  document.getElementById("find").disabled=true;
+  document.getElementById("log").innerHTML=`▶ Dijkstra started<br>Source: ${s}<br>Destination: ${t}<br>`;
+  timer=setInterval(()=>{
+    if(i>=r.steps.length){
+      clearInterval(timer);
+      const dist=r.d[t], mins=Math.max(1,Math.round(dist/80));
+      draw({start:s,target:t,path:r.path,visited:new Set(Object.keys(nodes))});
+      document.getElementById("route").textContent="🏆 "+r.path.join(" → ");
+      document.getElementById("distance").textContent=`Distance: ${dist} m`;
+      document.getElementById("time").textContent=`Estimated walking time: ${mins} min`;
+      document.getElementById("status").textContent="✓ Route found successfully";
+      document.getElementById("bar").style.width="100%";
+      log(`🎯 Destination reached! Shortest distance: ${dist} m`);
+      document.getElementById("find").disabled=false;
+      return;
+    }
+    const st=r.steps[i++];
+    if(st.type==="visit"){
+      draw({start:s,target:t,current:st.node,visited:st.visited});
+      document.getElementById("current").textContent=`Current node: ${st.node}`;
+      document.getElementById("visited").textContent=`Visited nodes: ${st.visited.size}`;
+      log(`✓ Visiting ${st.node} | distance = ${st.distance} m`);
+    }else if(st.type==="check"){
+      edgeCount++; draw({start:s,target:t,checked:[st.a,st.b]});
+      document.getElementById("edges").textContent=`Edges checked: ${edgeCount}`;
+      log(`Checking ${st.a} → ${st.b} | candidate distance = ${st.nd} m`);
+    }else{
+      log(`↳ Updated ${st.node} = ${st.distance} m (previous: ${st.prev})`);
+    }
+    document.getElementById("bar").style.width=`${Math.round(i/r.steps.length*100)}%`;
+    document.getElementById("status").textContent="Running Dijkstra...";
+  },300);
+}
+document.getElementById("find").onclick=run;
+document.getElementById("reset").onclick=reset;
+</script>
+</body>
+</html>
